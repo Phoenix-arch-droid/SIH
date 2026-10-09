@@ -1,0 +1,9 @@
+# ISRO SIH26169: AI-Based Virtual Camera Tracking System for Coarse Alignment of Mobile FSOC Terminals
+# Production Dependencies (Offline-First, Zero Cloud Dependencies)
+
+numpy>=2.0.0
+scipy>=1.14.0
+opencv-python-headless>=4.10.0
+pillow>=10.0.0
+pyinstaller>=6.0.0
+pytest>=8.0.0

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISRO SIH26169: Virtual Camera Tracking System for FSOC Coarse Alignment</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Offline bundled 3D and Charting libraries -->
+  <script src="js/three.min.js"></script>
+  <script src="js/OrbitControls.js"></script>
+  <script src="js/chart.min.js"></script>
+</head>
+<body>
+
+  <!-- TOP HEADER -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="isro-badge">
+        <div class="isro-badge-inner">ISRO</div>
+      </div>
+      <div class="title-group">
+        <h1>FSOC COARSE-ALIGNMENT & TRACKING LABORATORY <span style="font-size:10px; color:#00e5ff; font-weight:normal;">[SIH26169]</span></h1>
+        <div class="sub">Indian Space Research Organisation &bull; Dept of Space &bull; Smart Automation &bull; Closed-Loop Hardware-in-Loop Sim</div>
+      </div>
+    </div>
+
+    <!-- Live Telemetry KPI Chips -->
+    <div class="header-center">
+      <div id="status-state-badge" class="status-badge state-SEARCHING">
+        <span class="pulse-dot"></span>
+        <span id="status-state-text">SEARCHING</span>
+      </div>
+
+      <div class="kpi-chip">
+        <span class="kpi-label">Angular Error</span>
+        <span id="kpi-error-mrad" class="kpi-value">-- mrad</span>
+      </div>
+
+      <div class="kpi-chip">
+        <span class="kpi-label">Error (Deg)</span>
+        <span id="kpi-error-deg" class="kpi-value" style="color:#fff;">--°</span>
+      </div>
+
+      <div class="kpi-chip">
+        <span class="kpi-label">Lock Rate</span>
+        <span id="kpi-lock-rate" class="kpi-value" style="color:var(--accent-green);">0%</span>
+      </div>
+
+      <div class="kpi-chip">
+        <span class="kpi-label">Acq Time</span>
+        <span id="kpi-acq-time" class="kpi-value">--</span>
+      </div>
+
+      <div class="kpi-chip">
+        <span class="kpi-label">Confidence</span>
+        <span id="kpi-confidence" class="kpi-value" style="color:#b388ff;">0%</span>
+      </div>
+
+      <div class="kpi-chip">
+        <span class="kpi-label">Loop Rate</span>
+        <span class="kpi-value"><span id="kpi-fps">30</span> <span style="font-size:9px; color:#8c9cb5;">FPS (<span id="kpi-latency">4.2</span>ms)</span></span>
+      </div>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <div class="header-right">
+      <div class="btn-group">
+        <button id="btn-mode-baseline" class="btn" title="Classical Computer Vision (Adaptive Thresholding + Moments)">BASELINE CV</button>
+        <button id="btn-mode-enhanced" class="btn active" title="AI/ML Enhanced (Airy-Correlated 12-D Classifier)">AI ENHANCED</button>
+      </div>
+
+      <button id="btn-one-click-demo" class="btn btn-demo" title="Deterministic 18-step Coarse Alignment sequence">⚡ RUN 1-CLICK DEMO</button>
+      <button id="btn-run-benchmark" class="btn btn-primary" title="Evaluate Baseline vs AI on current scenario">⚖ RUN BENCHMARK</button>
+      <button id="btn-export-report" class="btn" title="Download Official Technical Report">📄 REPORT</button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="workspace">
+
+    <!-- LEFT SIDEBAR: SCENARIOS & DISTURBANCES -->
+    <aside class="panel sidebar-panel">
+      <div class="panel-header">
+        <span>Experiment Control</span>
+        <span class="badge">ACTIVE</span>
+      </div>
+      <div class="panel-body">
+
+        <!-- Scenario Selector -->
+        <div class="control-section">
+          <div class="control-section-title">Standard Scenario (1 - 14)</div>
+          <select id="scenario-select" class="control-select">
+            <option value="1">1. Static Target Baseline</option>
+          </select>
+          <div id="scenario-description" class="scenario-desc">
+            Loading scenario specifications...
+          </div>
+        </div>
+
+        <!-- Simulation State Actions -->
+        <div class="control-section">
+          <div class="control-section-title">Simulation Loop</div>
+          <div style="display:flex; gap:6px;">
+            <button id="btn-sim-pause" class="btn btn-primary" style="flex:1;">⏸ PAUSE</button>
+            <button id="btn-sim-reset" class="btn" style="flex:1;">↺ RESET</button>
+          </div>
+        </div>
+
+        <!-- Disturbance Engine Presets -->
+        <div class="control-section">
+          <div class="control-section-title">Disturbance Level</div>
+          <div class="btn-group" style="width:100%; margin-bottom:8px;">
+            <button class="btn btn-disturb" data-preset="OFF" style="flex:1;">OFF</button>
+            <button class="btn btn-disturb active" data-preset="LOW" style="flex:1;">LOW</button>
+            <button class="btn btn-disturb" data-preset="MEDIUM" style="flex:1;">MED</button>
+            <button class="btn btn-disturb" data-preset="HIGH" style="flex:1;">HIGH</button>
+          </div>
+
+          <!-- Dynamic Disturbance Sliders -->
+          <div class="control-row">
+            <label>Turbulence (&sigma;<sub>I</sub><sup>2</sup>):</label>
+            <span class="val" id="val-disp-turb">0.25</span>
+          </div>
+          <input type="range" id="slider-turbulence" min="0" max="1.0" step="0.05" value="0.25">
+
+          <div class="control-row" style="margin-top:8px;">
+            <label>Platform Vibration:</label>
+            <span class="val" id="val-disp-vib">0.15°</span>
+          </div>
+          <input type="range" id="slider-vibration" min="0" max="0.6" step="0.02" value="0.15">
+
+          <div class="control-row" style="margin-top:8px;">
+            <label>Sensor Noise Std:</label>
+            <span class="val" id="val-disp-noise">12.0</span>
+          </div>
+          <input type="range" id="slider-noise" min="0" max="40.0" step="1.0" value="12.0">
+
+          <div class="control-row" style="margin-top:10px;">
+            <label for="chk-occlusion" style="cursor:pointer; color:#fff;">Force Line-of-Sight Occlusion</label>
+            <input type="checkbox" id="chk-occlusion" style="accent-color:var(--accent-red); cursor:pointer;">
+          </div>
+        </div>
+
+        <!-- Telemetry Data Export -->
+        <div class="control-section" style="margin-top:auto;">
+          <div class="control-section-title">Telemetry Export</div>
+          <button id="btn-export-data" class="btn" style="width:100%;">💾 EXPORT EXPERIMENT JSON</button>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- CENTER TOP: 3D WORLD VIEW -->
+    <section class="panel world-view-panel">
+      <div class="panel-header">
+        <span>3D World Tactical Simulation (SE(3) Kinematics)</span>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-cam-preset active" data-view="tactical" style="padding:2px 8px; font-size:9px;">TACTICAL</button>
+          <button class="btn btn-cam-preset" data-view="chase" style="padding:2px 8px; font-size:9px;">TERMINAL</button>
+          <button class="btn btn-cam-preset" data-view="top" style="padding:2px 8px; font-size:9px;">OVERHEAD</button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0; position:relative;">
+        <div id="three-container"></div>
+        <div class="three-hud-overlay">
+          <div class="line"><span class="k">TARGET BEACON:</span> <span class="v">PRIMARY [850nm]</span></div>
+          <div class="line"><span class="k">CAMERA POINTING:</span> <span class="v">BORESIGHT VECTOR</span></div>
+          <div class="line"><span class="k">COARSE FOV:</span> <span class="v">15.0° HFOV CONE</span></div>
+          <div class="line"><span class="k">TRAIL:</span> <span class="v">CYAN (TRUTH) / AMBER (PRED)</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT TOP: SIMULATED CAMERA SENSOR FEED & GIMBAL TELEMETRY -->
+    <section class="panel camera-feed-panel">
+      <div class="panel-header">
+        <span>Simulated Optical Sensor Feed & HUD</span>
+        <span class="badge" style="color:var(--accent-cyan);">1280x720 850nm</span>
+      </div>
+      <div class="panel-body" style="display:flex; flex-direction:column; padding:8px;">
+        
+        <!-- Live Synthetic Camera Sensor -->
+        <div class="camera-feed-container">
+          <img id="camera-feed-img" alt="Sensor Feed" src="/api/camera_frame">
+          <canvas id="camera-hud-canvas"></canvas>
+        </div>
+
+        <!-- Gimbal & Actuator Telemetry -->
+        <div class="gimbal-telemetry-container">
+          <div class="dial-grid">
+            <div class="dial-card">
+              <div class="dial-title">Pan (Azimuth)</div>
+              <div id="val-pan-actual" class="dial-value">0.00°</div>
+              <div id="val-pan-cmd" class="dial-sub">Cmd: 0.0°/s</div>
+            </div>
+            <div class="dial-card">
+              <div class="dial-title">Tilt (Elevation)</div>
+              <div id="val-tilt-actual" class="dial-value">0.00°</div>
+              <div id="val-tilt-cmd" class="dial-sub">Cmd: 0.0°/s</div>
+            </div>
+          </div>
+          <div class="dial-card" style="margin-top:2px;">
+            <div class="dial-title">Gimbal Slew Rate</div>
+            <div id="val-gimbal-slew" class="dial-value" style="font-size:13px; color:var(--accent-green);">0.0 °/s</div>
+            <div class="dial-sub">Limit: 35.0 °/s &bull; Max Accel: 120 °/s²</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- BOTTOM ROW: LIVE REAL-TIME TELEMETRY CHARTS -->
+    <section class="panel analytics-panel">
+      <div class="panel-header">
+        <span>Real-Time Multi-Channel Telemetry Stream</span>
+        <span class="badge">60 FPS ROLLING BUFFER</span>
+      </div>
+      <div class="panel-body" style="padding:4px;">
+        <div class="charts-row">
+          
+          <div class="chart-card">
+            <div class="chart-card-title">1. Total Angular Error (mrad)</div>
+            <div class="chart-wrapper">
+              <canvas id="chart-error"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-title">2. Tracking Confidence (%)</div>
+            <div class="chart-wrapper">
+              <canvas id="chart-confidence"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-title">3. Gimbal Slew Rates (°/s)</div>
+            <div class="chart-wrapper">
+              <canvas id="chart-gimbal"></canvas>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- BENCHMARK MODAL -->
+  <div id="modal-benchmark" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Comparative Performance Benchmark (Identical Seeds & Durations)</h2>
+        <button id="btn-close-modal" class="btn">&times; CLOSE</button>
+      </div>
+      <div class="modal-body">
+        <table class="benchmark-table">
+          <thead>
+            <tr>
+              <th>Evaluation Parameter</th>
+              <th>Baseline CV</th>
+              <th>Enhanced (AI/ML)</th>
+              <th>Improvement (&Delta;)</th>
+            </tr>
+          </thead>
+          <tbody id="benchmark-table-body">
+            <!-- Populated via javascript -->
+          </tbody>
+        </table>
+        <div style="margin-top:14px; font-size:10px; color:var(--text-secondary); line-height:1.5;">
+          * Mathematical ground-truth validation: Identical initial coordinates, target trajectory, atmospheric turbulence seed, sensor noise seed, and PID control limits across both runs.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Client JavaScript -->
+  <script src="js/world_view.js"></script>
+  <script src="js/camera_view.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/dashboard.js"></script>
+
+</body>
+</html>
